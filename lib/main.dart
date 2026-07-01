@@ -1,4 +1,8 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -156,6 +160,9 @@ class CatSpot {
     required this.risk,
     required this.cats,
     required this.lastRecord,
+    required this.lat,
+    required this.lng,
+    required this.note,
   });
 
   final String name;
@@ -163,6 +170,9 @@ class CatSpot {
   final String risk;
   final List<String> cats;
   final String lastRecord;
+  final double lat;
+  final double lng;
+  final String note;
 }
 
 class MiaoNiHomePage extends StatefulWidget {
@@ -252,10 +262,10 @@ class _MiaoNiHomePageState extends State<MiaoNiHomePage> {
   ];
 
   List<CatSpot> get _spots => [
-        CatSpot(name: '小区东门花坛', type: '投喂点', risk: '低', cats: _cats.where((c) => c.location == '小区东门花坛').map((e) => e.name).toList(), lastRecord: '今天 08:30'),
-        CatSpot(name: '便利店后巷', type: '常出现点', risk: '中', cats: _cats.where((c) => c.location == '便利店后巷').map((e) => e.name).toList(), lastRecord: '昨天'),
-        CatSpot(name: '停车场入口', type: '救助关注点', risk: '高', cats: _cats.where((c) => c.location == '停车场入口').map((e) => e.name).toList(), lastRecord: '6 天前'),
-        CatSpot(name: '北门垃圾房', type: '危险区域', risk: '高', cats: _cats.where((c) => c.location == '北门垃圾房').map((e) => e.name).toList(), lastRecord: '9 天前'),
+        CatSpot(name: '小区东门花坛', type: '投喂点', risk: '低', cats: _cats.where((c) => c.location == '小区东门花坛').map((e) => e.name).toList(), lastRecord: '今天 08:30', lat: 31.2304, lng: 121.4737, note: '主投喂点，适合放水碗。'),
+        CatSpot(name: '便利店后巷', type: '常出现点', risk: '中', cats: _cats.where((c) => c.location == '便利店后巷').map((e) => e.name).toList(), lastRecord: '昨天', lat: 31.2312, lng: 121.4751, note: '人流少，奶牛经常出现。'),
+        CatSpot(name: '停车场入口', type: '救助关注点', risk: '高', cats: _cats.where((c) => c.location == '停车场入口').map((e) => e.name).toList(), lastRecord: '6 天前', lat: 31.2291, lng: 121.4728, note: '车辆多，三花需要重点观察。'),
+        CatSpot(name: '北门垃圾房', type: '危险区域', risk: '高', cats: _cats.where((c) => c.location == '北门垃圾房').map((e) => e.name).toList(), lastRecord: '9 天前', lat: 31.2320, lng: 121.4716, note: '环境复杂，灰灰长期未出现。'),
       ];
 
   @override
@@ -312,26 +322,17 @@ class _MiaoNiHomePageState extends State<MiaoNiHomePage> {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      builder: (context) => _SheetFrame(
-        title: '拍照识猫',
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('上传照片后，猫匿会根据花色、体型和历史照片给出候选猫咪。当前版本先提供识别流程占位，后续接入本地 TFLite。'),
-            const SizedBox(height: 18),
-            _RecognitionCandidate(cat: _cats[0], score: 86),
-            _RecognitionCandidate(cat: _cats[1], score: 71),
-            const SizedBox(height: 8),
-            FilledButton.icon(
-              onPressed: () {
-                Navigator.pop(context);
-                _showAddRecordSheet(initialType: RecordType.photo, initialCat: _cats[0]);
-              },
-              icon: const Icon(Icons.check),
-              label: const Text('确认是小橘并创建拍照记录'),
-            ),
-          ],
-        ),
+      backgroundColor: Colors.transparent,
+      builder: (context) => _RecognitionSheet(
+        cats: _cats,
+        onConfirm: (cat) {
+          Navigator.pop(context);
+          _showAddRecordSheet(initialType: RecordType.photo, initialCat: cat);
+        },
+        onCreateNew: () {
+          Navigator.pop(context);
+          _showAddCatSheet();
+        },
       ),
     );
   }
@@ -664,39 +665,80 @@ class _CatDetailPage extends StatelessWidget {
   }
 }
 
-class _MapPage extends StatelessWidget {
+class _MapPage extends StatefulWidget {
   const _MapPage({required this.spots});
 
   final List<CatSpot> spots;
 
   @override
+  State<_MapPage> createState() => _MapPageState();
+}
+
+class _MapPageState extends State<_MapPage> {
+  CatSpot? selected;
+
+  @override
+  void initState() {
+    super.initState();
+    selected = widget.spots.first;
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final spot = selected ?? widget.spots.first;
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 14, 20, 100),
       children: [
-        const _Header(title: '猫咪地图', subtitle: '常出现点、投喂点、救助点和风险区域'),
+        const _Header(title: '猫咪地图', subtitle: '点击地点，查看附近猫咪和打开地图'),
         const SizedBox(height: 16),
         Container(
-          height: 210,
+          height: 250,
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(28),
-            gradient: LinearGradient(colors: [Colors.green.shade100, Colors.orange.shade100], begin: Alignment.topLeft, end: Alignment.bottomRight),
+            borderRadius: BorderRadius.circular(30),
+            gradient: const LinearGradient(
+              colors: [Color(0xFFE9F7EF), Color(0xFFFFF0D8)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            boxShadow: [BoxShadow(color: Colors.black.withOpacity(.05), blurRadius: 24, offset: const Offset(0, 12))],
           ),
           child: Stack(
-            children: const [
-              Positioned(top: 30, left: 35, child: _MapPin(label: '东门', color: _green)),
-              Positioned(top: 86, right: 48, child: _MapPin(label: '后巷', color: _orange)),
-              Positioned(bottom: 44, left: 88, child: _MapPin(label: '停车场', color: _red)),
-              Positioned(bottom: 28, right: 82, child: _MapPin(label: '北门', color: Color(0xFFFFC107))),
-              Center(child: Text('轻量地图视图\n后续可接入真实定位服务', textAlign: TextAlign.center, style: TextStyle(color: _dark, fontWeight: FontWeight.w600))),
+            children: [
+              Positioned.fill(
+                child: CustomPaint(painter: _MapPathPainter()),
+              ),
+              Positioned(top: 30, left: 35, child: _TapMapPin(label: '东门', color: _green, selected: spot.name == '小区东门花坛', onTap: () => _select('小区东门花坛'))),
+              Positioned(top: 88, right: 42, child: _TapMapPin(label: '后巷', color: _orange, selected: spot.name == '便利店后巷', onTap: () => _select('便利店后巷'))),
+              Positioned(bottom: 48, left: 76, child: _TapMapPin(label: '停车场', color: _red, selected: spot.name == '停车场入口', onTap: () => _select('停车场入口'))),
+              Positioned(bottom: 28, right: 76, child: _TapMapPin(label: '北门', color: const Color(0xFFFFC107), selected: spot.name == '北门垃圾房', onTap: () => _select('北门垃圾房'))),
+              Positioned(
+                left: 18,
+                right: 18,
+                bottom: 14,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(color: Colors.white.withOpacity(.9), borderRadius: BorderRadius.circular(18)),
+                  child: Row(children: [
+                    const Icon(Icons.touch_app_outlined, size: 18, color: _orange),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text('已选：${spot.name}', style: const TextStyle(fontWeight: FontWeight.w800))),
+                  ]),
+                ),
+              ),
             ],
           ),
         ),
+        const SizedBox(height: 16),
+        _SelectedSpotCard(spot: spot),
         const SizedBox(height: 18),
-        _SectionTitle('地点列表', action: '${spots.length} 个'),
-        ...spots.map((s) => _SpotCard(spot: s)),
+        _SectionTitle('地点列表', action: '${widget.spots.length} 个'),
+        ...widget.spots.map((s) => _SpotCard(spot: s, onTap: () => setState(() => selected = s))),
       ],
     );
+  }
+
+  void _select(String name) {
+    setState(() => selected = widget.spots.firstWhere((s) => s.name == name));
   }
 }
 
@@ -939,17 +981,177 @@ class _MapPin extends StatelessWidget {
 }
 
 class _SpotCard extends StatelessWidget {
-  const _SpotCard({required this.spot});
+  const _SpotCard({required this.spot, this.onTap});
   final CatSpot spot;
+  final VoidCallback? onTap;
   @override
   Widget build(BuildContext context) => Card(
         child: ListTile(
+          onTap: onTap,
           leading: CircleAvatar(backgroundColor: _orange.withOpacity(.12), child: const Icon(Icons.place_outlined, color: _orange)),
           title: Text(spot.name, style: const TextStyle(fontWeight: FontWeight.w800)),
           subtitle: Text('${spot.type} · 风险${spot.risk} · ${spot.cats.isEmpty ? '暂无猫咪' : spot.cats.join('、')}'),
-          trailing: Text(spot.lastRecord, style: TextStyle(color: Colors.grey.shade500, fontSize: 12)),
+          trailing: const Icon(Icons.chevron_right),
         ),
       );
+}
+
+class _TapMapPin extends StatelessWidget {
+  const _TapMapPin({required this.label, required this.color, required this.selected, required this.onTap});
+  final String label;
+  final Color color;
+  final bool selected;
+  final VoidCallback onTap;
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+        onTap: onTap,
+        child: AnimatedScale(
+          scale: selected ? 1.18 : 1,
+          duration: const Duration(milliseconds: 180),
+          child: Column(children: [
+            Icon(Icons.location_on, color: color, size: selected ? 42 : 34),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(999), border: selected ? Border.all(color: color, width: 2) : null),
+              child: Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+            ),
+          ]),
+        ),
+      );
+}
+
+class _SelectedSpotCard extends StatelessWidget {
+  const _SelectedSpotCard({required this.spot});
+  final CatSpot spot;
+  @override
+  Widget build(BuildContext context) => Card(
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              CircleAvatar(backgroundColor: _orange.withOpacity(.14), child: const Icon(Icons.place, color: _orange)),
+              const SizedBox(width: 12),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(spot.name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+                Text('${spot.type} · 风险${spot.risk} · ${spot.lastRecord}', style: TextStyle(color: Colors.grey.shade600)),
+              ])),
+            ]),
+            const SizedBox(height: 14),
+            Text(spot.note, style: TextStyle(color: Colors.grey.shade700, height: 1.45)),
+            const SizedBox(height: 12),
+            Wrap(spacing: 8, runSpacing: 8, children: spot.cats.isEmpty ? [const _MiniBadge(text: '暂无猫咪')] : spot.cats.map((c) => _MiniBadge(text: '🐾 $c')).toList()),
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: () => _openMap(spot),
+                icon: const Icon(Icons.map_outlined),
+                label: const Text('用系统地图打开'),
+              ),
+            ),
+          ]),
+        ),
+      );
+
+  Future<void> _openMap(CatSpot spot) async {
+    final uri = Uri.parse('geo:${spot.lat},${spot.lng}?q=${spot.lat},${spot.lng}(${Uri.encodeComponent(spot.name)})');
+    final web = Uri.parse('https://www.google.com/maps/search/?api=1&query=${spot.lat},${spot.lng}');
+    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      await launchUrl(web, mode: LaunchMode.externalApplication);
+    }
+  }
+}
+
+class _MapPathPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.white.withOpacity(.55)
+      ..strokeWidth = 10
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+    final path = Path()
+      ..moveTo(32, 62)
+      ..quadraticBezierTo(size.width * .45, 18, size.width - 52, 104)
+      ..quadraticBezierTo(size.width * .55, size.height * .7, 86, size.height - 58)
+      ..quadraticBezierTo(size.width * .55, size.height - 20, size.width - 82, size.height - 44);
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class _RecognitionSheet extends StatefulWidget {
+  const _RecognitionSheet({required this.cats, required this.onConfirm, required this.onCreateNew});
+  final List<CatProfile> cats;
+  final ValueChanged<CatProfile> onConfirm;
+  final VoidCallback onCreateNew;
+
+  @override
+  State<_RecognitionSheet> createState() => _RecognitionSheetState();
+}
+
+class _RecognitionSheetState extends State<_RecognitionSheet> {
+  XFile? image;
+  bool analyzed = false;
+  final picker = ImagePicker();
+
+  @override
+  Widget build(BuildContext context) {
+    final candidates = widget.cats.take(3).toList();
+    return Container(
+      decoration: const BoxDecoration(color: _cream, borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+      child: _SheetFrame(
+        title: '拍猫识别',
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Container(
+            height: 190,
+            width: double.infinity,
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Colors.grey.shade200)),
+            child: image == null
+                ? Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    Icon(Icons.add_a_photo_outlined, size: 48, color: Colors.grey.shade500),
+                    const SizedBox(height: 10),
+                    Text('先拍照或从相册选择猫咪照片', style: TextStyle(color: Colors.grey.shade600)),
+                  ])
+                : ClipRRect(borderRadius: BorderRadius.circular(24), child: Image.file(File(image!.path), fit: BoxFit.cover)),
+          ),
+          const SizedBox(height: 14),
+          Row(children: [
+            Expanded(child: OutlinedButton.icon(onPressed: () => _pick(ImageSource.camera), icon: const Icon(Icons.camera_alt_outlined), label: const Text('拍照'))),
+            const SizedBox(width: 10),
+            Expanded(child: OutlinedButton.icon(onPressed: () => _pick(ImageSource.gallery), icon: const Icon(Icons.photo_library_outlined), label: const Text('相册'))),
+          ]),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: image == null ? null : () => setState(() => analyzed = true),
+              icon: const Icon(Icons.auto_awesome),
+              label: const Text('分析相似猫咪'),
+            ),
+          ),
+          const SizedBox(height: 18),
+          if (analyzed) ...[
+            const _SectionTitle('可能是这些猫', action: '人工确认'),
+            ...candidates.asMap().entries.map((entry) {
+              final score = [88, 73, 61][entry.key];
+              return _RecognitionCandidate(cat: entry.value, score: score, onTap: () => widget.onConfirm(entry.value));
+            }),
+            const SizedBox(height: 8),
+            TextButton.icon(onPressed: widget.onCreateNew, icon: const Icon(Icons.add), label: const Text('都不是，创建新猫档案')),
+          ] else
+            Text('说明：当前版本已支持真实拍照/选图和候选确认；识别算法为本地占位逻辑，后续可替换为 TFLite 猫脸/花色特征模型。', style: TextStyle(color: Colors.grey.shade600, height: 1.45)),
+        ]),
+      ),
+    );
+  }
+
+  Future<void> _pick(ImageSource source) async {
+    final picked = await picker.pickImage(source: source, maxWidth: 1280, maxHeight: 1280, imageQuality: 85);
+    if (picked != null) setState(() { image = picked; analyzed = false; });
+  }
 }
 
 class _CalendarPreview extends StatelessWidget {
@@ -1008,16 +1210,22 @@ class _SheetFrame extends StatelessWidget {
 }
 
 class _RecognitionCandidate extends StatelessWidget {
-  const _RecognitionCandidate({required this.cat, required this.score});
+  const _RecognitionCandidate({required this.cat, required this.score, this.onTap});
   final CatProfile cat;
   final int score;
+  final VoidCallback? onTap;
   @override
   Widget build(BuildContext context) => Card(
         child: ListTile(
+          onTap: onTap,
           leading: Text(cat.avatar, style: const TextStyle(fontSize: 30)),
           title: Text(cat.name, style: const TextStyle(fontWeight: FontWeight.w800)),
           subtitle: Text('${cat.color} · ${cat.location}'),
-          trailing: Text('$score%', style: const TextStyle(color: _green, fontWeight: FontWeight.w900, fontSize: 18)),
+          trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+            Text('$score%', style: const TextStyle(color: _green, fontWeight: FontWeight.w900, fontSize: 18)),
+            const SizedBox(width: 4),
+            const Icon(Icons.chevron_right),
+          ]),
         ),
       );
 }
