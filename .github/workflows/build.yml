@@ -24,10 +24,6 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: Install Android SDK 35 build tools
-        run: |
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0"
-
       - name: Backup Flutter source
         run: |
           cp -r lib /tmp/miao_ni_lib
@@ -46,21 +42,13 @@ jobs:
           cp -r /tmp/miao_ni_lib lib
           cp /tmp/miao_ni_pubspec.yaml pubspec.yaml
 
-      - name: Patch Android build config for modern plugins
+      - name: Patch Android build config for stable CI
         run: |
           if [ -f android/settings.gradle ]; then
             sed -i 's/id "org.jetbrains.kotlin.android" version "[^"]*" apply false/id "org.jetbrains.kotlin.android" version "1.9.24" apply false/' android/settings.gradle
           fi
           if [ -f android/build.gradle ]; then
             sed -i 's/ext.kotlin_version = .*/ext.kotlin_version = "1.9.24"/' android/build.gradle || true
-          fi
-          if [ -f android/app/build.gradle ]; then
-            sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 35/' android/app/build.gradle
-            sed -i 's/compileSdkVersion flutter.compileSdkVersion/compileSdkVersion 35/' android/app/build.gradle
-            if ! grep -q 'buildToolsVersion' android/app/build.gradle; then
-              sed -i '/compileSdk = 35/a\    buildToolsVersion = "35.0.0"' android/app/build.gradle
-              sed -i '/compileSdkVersion 35/a\    buildToolsVersion "35.0.0"' android/app/build.gradle
-            fi
           fi
 
       - name: Flutter pub get

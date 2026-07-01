@@ -10,8 +10,11 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  image_picker: ^1.1.2
-  url_launcher: ^6.3.0
+  image_picker: 1.0.7
+  url_launcher: 6.2.6
+
+dependency_overrides:
+  flutter_plugin_android_lifecycle: 2.0.17
 
 dev_dependencies:
   flutter_test:
