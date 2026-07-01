@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -159,28 +158,6 @@ class CatRecord {
   String? photoPath;
 }
 
-class CatSpot {
-  const CatSpot({
-    required this.name,
-    required this.type,
-    required this.risk,
-    required this.cats,
-    required this.lastRecord,
-    required this.lat,
-    required this.lng,
-    required this.note,
-  });
-
-  final String name;
-  final String type;
-  final String risk;
-  final List<String> cats;
-  final String lastRecord;
-  final double lat;
-  final double lng;
-  final String note;
-}
-
 class MiaoNiHomePage extends StatefulWidget {
   const MiaoNiHomePage({super.key});
 
@@ -267,26 +244,18 @@ class _MiaoNiHomePageState extends State<MiaoNiHomePage> {
     CatRecord(id: 4, catId: 4, type: RecordType.seen, title: '最后一次出现', location: '北门垃圾房', time: DateTime.now().subtract(const Duration(days: 9)), note: '之后没有再记录。'),
   ];
 
-  List<CatSpot> get _spots => [
-        CatSpot(name: '小区东门花坛', type: '投喂点', risk: '低', cats: _cats.where((c) => c.location == '小区东门花坛').map((e) => e.name).toList(), lastRecord: '今天 08:30', lat: 31.2304, lng: 121.4737, note: '主投喂点，适合放水碗。'),
-        CatSpot(name: '便利店后巷', type: '常出现点', risk: '中', cats: _cats.where((c) => c.location == '便利店后巷').map((e) => e.name).toList(), lastRecord: '昨天', lat: 31.2312, lng: 121.4751, note: '人流少，奶牛经常出现。'),
-        CatSpot(name: '停车场入口', type: '救助关注点', risk: '高', cats: _cats.where((c) => c.location == '停车场入口').map((e) => e.name).toList(), lastRecord: '6 天前', lat: 31.2291, lng: 121.4728, note: '车辆多，三花需要重点观察。'),
-        CatSpot(name: '北门垃圾房', type: '危险区域', risk: '高', cats: _cats.where((c) => c.location == '北门垃圾房').map((e) => e.name).toList(), lastRecord: '9 天前', lat: 31.2320, lng: 121.4716, note: '环境复杂，灰灰长期未出现。'),
-      ];
-
   @override
   Widget build(BuildContext context) {
     final pages = [
       _DashboardPage(cats: _cats, records: _records, onQuickAction: _handleQuickAction, onCatTap: _openCatDetail),
       _CatsPage(cats: _cats, records: _records, onAdd: _showAddCatSheet, onTap: _openCatDetail),
-      _MapPage(spots: _spots),
       _RecordsPage(cats: _cats, records: _records, onAdd: _showAddRecordSheet),
       _ProfilePage(cats: _cats, records: _records),
     ];
 
     return Scaffold(
       body: SafeArea(child: pages[_tab]),
-      floatingActionButton: _tab == 0 || _tab == 1 || _tab == 3
+      floatingActionButton: _tab == 0 || _tab == 1 || _tab == 2
           ? FloatingActionButton.extended(
               backgroundColor: _orange,
               foregroundColor: Colors.white,
@@ -303,7 +272,6 @@ class _MiaoNiHomePageState extends State<MiaoNiHomePage> {
         destinations: const [
           NavigationDestination(icon: Icon(Icons.dashboard_outlined), selectedIcon: Icon(Icons.dashboard), label: '首页'),
           NavigationDestination(icon: Icon(Icons.pets_outlined), selectedIcon: Icon(Icons.pets), label: '猫咪'),
-          NavigationDestination(icon: Icon(Icons.map_outlined), selectedIcon: Icon(Icons.map), label: '地图'),
           NavigationDestination(icon: Icon(Icons.event_note_outlined), selectedIcon: Icon(Icons.event_note), label: '记录'),
           NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person), label: '我的'),
         ],
@@ -825,83 +793,6 @@ class _CatDetailPageState extends State<_CatDetailPage> {
   }
 }
 
-class _MapPage extends StatefulWidget {
-  const _MapPage({required this.spots});
-
-  final List<CatSpot> spots;
-
-  @override
-  State<_MapPage> createState() => _MapPageState();
-}
-
-class _MapPageState extends State<_MapPage> {
-  CatSpot? selected;
-
-  @override
-  void initState() {
-    super.initState();
-    selected = widget.spots.first;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final spot = selected ?? widget.spots.first;
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 14, 20, 100),
-      children: [
-        const _Header(title: '猫咪地图', subtitle: '点击地点，查看附近猫咪和打开地图'),
-        const SizedBox(height: 16),
-        Container(
-          height: 250,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(30),
-            gradient: const LinearGradient(
-              colors: [Color(0xFFE9F7EF), Color(0xFFFFF0D8)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(.05), blurRadius: 24, offset: const Offset(0, 12))],
-          ),
-          child: Stack(
-            children: [
-              Positioned.fill(
-                child: CustomPaint(painter: _MapPathPainter()),
-              ),
-              Positioned(top: 30, left: 35, child: _TapMapPin(label: '东门', color: _green, selected: spot.name == '小区东门花坛', onTap: () => _select('小区东门花坛'))),
-              Positioned(top: 88, right: 42, child: _TapMapPin(label: '后巷', color: _orange, selected: spot.name == '便利店后巷', onTap: () => _select('便利店后巷'))),
-              Positioned(bottom: 48, left: 76, child: _TapMapPin(label: '停车场', color: _red, selected: spot.name == '停车场入口', onTap: () => _select('停车场入口'))),
-              Positioned(bottom: 28, right: 76, child: _TapMapPin(label: '北门', color: const Color(0xFFFFC107), selected: spot.name == '北门垃圾房', onTap: () => _select('北门垃圾房'))),
-              Positioned(
-                left: 18,
-                right: 18,
-                bottom: 14,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  decoration: BoxDecoration(color: Colors.white.withOpacity(.9), borderRadius: BorderRadius.circular(18)),
-                  child: Row(children: [
-                    const Icon(Icons.touch_app_outlined, size: 18, color: _orange),
-                    const SizedBox(width: 8),
-                    Expanded(child: Text('已选：${spot.name}', style: const TextStyle(fontWeight: FontWeight.w800))),
-                  ]),
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-        _SelectedSpotCard(spot: spot),
-        const SizedBox(height: 18),
-        _SectionTitle('地点列表', action: '${widget.spots.length} 个'),
-        ...widget.spots.map((s) => _SpotCard(spot: s, onTap: () => setState(() => selected = s))),
-      ],
-    );
-  }
-
-  void _select(String name) {
-    setState(() => selected = widget.spots.firstWhere((s) => s.name == name));
-  }
-}
-
 class _RecordsPage extends StatefulWidget {
   const _RecordsPage({required this.cats, required this.records, required this.onAdd});
 
@@ -1233,116 +1124,6 @@ class _RecordTile extends StatelessWidget {
           ]),
         ),
       );
-}
-
-class _MapPin extends StatelessWidget {
-  const _MapPin({required this.label, required this.color});
-  final String label;
-  final Color color;
-  @override
-  Widget build(BuildContext context) => Column(children: [Icon(Icons.location_on, color: color, size: 34), Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(999)), child: Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)))]);
-}
-
-class _SpotCard extends StatelessWidget {
-  const _SpotCard({required this.spot, this.onTap});
-  final CatSpot spot;
-  final VoidCallback? onTap;
-  @override
-  Widget build(BuildContext context) => Card(
-        child: ListTile(
-          onTap: onTap,
-          leading: CircleAvatar(backgroundColor: _orange.withOpacity(.12), child: const Icon(Icons.place_outlined, color: _orange)),
-          title: Text(spot.name, style: const TextStyle(fontWeight: FontWeight.w800)),
-          subtitle: Text('${spot.type} · 风险${spot.risk} · ${spot.cats.isEmpty ? '暂无猫咪' : spot.cats.join('、')}'),
-          trailing: const Icon(Icons.chevron_right),
-        ),
-      );
-}
-
-class _TapMapPin extends StatelessWidget {
-  const _TapMapPin({required this.label, required this.color, required this.selected, required this.onTap});
-  final String label;
-  final Color color;
-  final bool selected;
-  final VoidCallback onTap;
-  @override
-  Widget build(BuildContext context) => GestureDetector(
-        onTap: onTap,
-        child: AnimatedScale(
-          scale: selected ? 1.18 : 1,
-          duration: const Duration(milliseconds: 180),
-          child: Column(children: [
-            Icon(Icons.location_on, color: color, size: selected ? 42 : 34),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(999), border: selected ? Border.all(color: color, width: 2) : null),
-              child: Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-            ),
-          ]),
-        ),
-      );
-}
-
-class _SelectedSpotCard extends StatelessWidget {
-  const _SelectedSpotCard({required this.spot});
-  final CatSpot spot;
-  @override
-  Widget build(BuildContext context) => Card(
-        child: Padding(
-          padding: const EdgeInsets.all(18),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              CircleAvatar(backgroundColor: _orange.withOpacity(.14), child: const Icon(Icons.place, color: _orange)),
-              const SizedBox(width: 12),
-              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(spot.name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
-                Text('${spot.type} · 风险${spot.risk} · ${spot.lastRecord}', style: TextStyle(color: Colors.grey.shade600)),
-              ])),
-            ]),
-            const SizedBox(height: 14),
-            Text(spot.note, style: TextStyle(color: Colors.grey.shade700, height: 1.45)),
-            const SizedBox(height: 12),
-            Wrap(spacing: 8, runSpacing: 8, children: spot.cats.isEmpty ? [const _MiniBadge(text: '暂无猫咪')] : spot.cats.map((c) => _MiniBadge(text: '🐾 $c')).toList()),
-            const SizedBox(height: 14),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: () => _openMap(spot),
-                icon: const Icon(Icons.map_outlined),
-                label: const Text('用系统地图打开'),
-              ),
-            ),
-          ]),
-        ),
-      );
-
-  Future<void> _openMap(CatSpot spot) async {
-    final uri = Uri.parse('geo:${spot.lat},${spot.lng}?q=${spot.lat},${spot.lng}(${Uri.encodeComponent(spot.name)})');
-    final web = Uri.parse('https://www.google.com/maps/search/?api=1&query=${spot.lat},${spot.lng}');
-    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-      await launchUrl(web, mode: LaunchMode.externalApplication);
-    }
-  }
-}
-
-class _MapPathPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.white.withOpacity(.55)
-      ..strokeWidth = 10
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round;
-    final path = Path()
-      ..moveTo(32, 62)
-      ..quadraticBezierTo(size.width * .45, 18, size.width - 52, 104)
-      ..quadraticBezierTo(size.width * .55, size.height * .7, 86, size.height - 58)
-      ..quadraticBezierTo(size.width * .55, size.height - 20, size.width - 82, size.height - 44);
-    canvas.drawPath(path, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 class _RecognitionSheet extends StatefulWidget {
