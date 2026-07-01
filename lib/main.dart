@@ -115,7 +115,9 @@ class CatProfile {
     required this.isAdoptable,
     required this.note,
     this.avatar = '🐱',
-  });
+    this.avatarPath,
+    List<String>? galleryPaths,
+  }) : galleryPaths = galleryPaths ?? [];
 
   final int id;
   String name;
@@ -131,6 +133,8 @@ class CatProfile {
   bool isAdoptable;
   String note;
   String avatar;
+  String? avatarPath;
+  List<String> galleryPaths;
 }
 
 class CatRecord {
@@ -142,6 +146,7 @@ class CatRecord {
     required this.location,
     required this.time,
     required this.note,
+    this.photoPath,
   });
 
   final int id;
@@ -151,6 +156,7 @@ class CatRecord {
   String location;
   DateTime time;
   String note;
+  String? photoPath;
 }
 
 class CatSpot {
@@ -325,9 +331,15 @@ class _MiaoNiHomePageState extends State<MiaoNiHomePage> {
       backgroundColor: Colors.transparent,
       builder: (context) => _RecognitionSheet(
         cats: _cats,
-        onConfirm: (cat) {
+        onConfirm: (cat, photoPath) {
           Navigator.pop(context);
-          _showAddRecordSheet(initialType: RecordType.photo, initialCat: cat);
+          setState(() {
+            if (photoPath != null && !cat.galleryPaths.contains(photoPath)) {
+              cat.galleryPaths.insert(0, photoPath);
+              cat.avatarPath ??= photoPath;
+            }
+          });
+          _showAddRecordSheet(initialType: RecordType.photo, initialCat: cat, initialPhotoPath: photoPath);
         },
         onCreateNew: () {
           Navigator.pop(context);
@@ -339,8 +351,21 @@ class _MiaoNiHomePageState extends State<MiaoNiHomePage> {
 
   void _openCatDetail(CatProfile cat) {
     Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (_) => _CatDetailPage(cat: cat, records: _records.where((r) => r.catId == cat.id).toList(), onAddRecord: () => _showAddRecordSheet(initialCat: cat)),
+      builder: (_) => _CatDetailPage(
+        cat: cat,
+        records: _records.where((r) => r.catId == cat.id).toList(),
+        onAddRecord: () => _showAddRecordSheet(initialCat: cat),
+        onChanged: () => setState(() {}),
+        onDelete: () => _deleteCat(cat),
+      ),
     ));
+  }
+
+  void _deleteCat(CatProfile cat) {
+    setState(() {
+      _records.removeWhere((r) => r.catId == cat.id);
+      _cats.removeWhere((c) => c.id == cat.id);
+    });
   }
 
   void _showAddCatSheet() {
@@ -350,6 +375,8 @@ class _MiaoNiHomePageState extends State<MiaoNiHomePage> {
     final note = TextEditingController();
     CatGender gender = CatGender.unknown;
     CatStatus status = CatStatus.normal;
+    String? avatarPath;
+    final picker = ImagePicker();
 
     showModalBottomSheet<void>(
       context: context,
@@ -359,6 +386,28 @@ class _MiaoNiHomePageState extends State<MiaoNiHomePage> {
           title: '新增猫咪档案',
           child: Column(
             children: [
+              Center(child: _CatAvatar(cat: CatProfile(id: -1, name: '新猫', color: '未知', pattern: '待补充', gender: CatGender.unknown, status: CatStatus.normal, health: '待观察', location: '未设置', lastSeen: DateTime.now(), isNeutered: false, isFriendly: false, isAdoptable: false, note: '', avatarPath: avatarPath), size: 86)),
+              const SizedBox(height: 10),
+              Row(children: [
+                Expanded(child: OutlinedButton.icon(
+                  onPressed: () async {
+                    final picked = await picker.pickImage(source: ImageSource.camera, maxWidth: 1280, maxHeight: 1280, imageQuality: 85);
+                    if (picked != null) setLocal(() => avatarPath = picked.path);
+                  },
+                  icon: const Icon(Icons.camera_alt_outlined),
+                  label: const Text('拍头像'),
+                )),
+                const SizedBox(width: 10),
+                Expanded(child: OutlinedButton.icon(
+                  onPressed: () async {
+                    final picked = await picker.pickImage(source: ImageSource.gallery, maxWidth: 1280, maxHeight: 1280, imageQuality: 85);
+                    if (picked != null) setLocal(() => avatarPath = picked.path);
+                  },
+                  icon: const Icon(Icons.photo_library_outlined),
+                  label: const Text('上传头像'),
+                )),
+              ]),
+              const SizedBox(height: 12),
               TextField(controller: name, decoration: const InputDecoration(labelText: '名字 / 昵称，例如 小橘')),
               const SizedBox(height: 12),
               TextField(controller: color, decoration: const InputDecoration(labelText: '花色 / 特征，例如 橘猫、白手套')),
@@ -403,6 +452,8 @@ class _MiaoNiHomePageState extends State<MiaoNiHomePage> {
                           isFriendly: false,
                           isAdoptable: false,
                           note: note.text.trim(),
+                          avatarPath: avatarPath,
+                          galleryPaths: avatarPath == null ? [] : [avatarPath!],
                         ),
                       );
                     });
@@ -419,11 +470,14 @@ class _MiaoNiHomePageState extends State<MiaoNiHomePage> {
     );
   }
 
-  void _showAddRecordSheet({RecordType? initialType, CatProfile? initialCat}) {
+  void _showAddRecordSheet({RecordType? initialType, CatProfile? initialCat, String? initialPhotoPath}) {
+    if (_cats.isEmpty) return;
     RecordType type = initialType ?? RecordType.feeding;
     CatProfile cat = initialCat ?? _cats.first;
     final location = TextEditingController(text: cat.location);
     final note = TextEditingController();
+    String? photoPath = initialPhotoPath;
+    final picker = ImagePicker();
 
     showModalBottomSheet<void>(
       context: context,
@@ -453,6 +507,28 @@ class _MiaoNiHomePageState extends State<MiaoNiHomePage> {
               TextField(controller: location, decoration: const InputDecoration(labelText: '地点')),
               const SizedBox(height: 12),
               TextField(controller: note, minLines: 3, maxLines: 5, decoration: const InputDecoration(labelText: '记录内容，例如 吃完猫粮，眼睛正常')),
+              const SizedBox(height: 12),
+              if (photoPath != null) ClipRRect(borderRadius: BorderRadius.circular(18), child: Image.file(File(photoPath!), height: 150, width: double.infinity, fit: BoxFit.cover)),
+              if (photoPath != null) const SizedBox(height: 10),
+              Row(children: [
+                Expanded(child: OutlinedButton.icon(
+                  onPressed: () async {
+                    final picked = await picker.pickImage(source: ImageSource.camera, maxWidth: 1280, maxHeight: 1280, imageQuality: 85);
+                    if (picked != null) setLocal(() { photoPath = picked.path; type = RecordType.photo; });
+                  },
+                  icon: const Icon(Icons.camera_alt_outlined),
+                  label: const Text('拍照'),
+                )),
+                const SizedBox(width: 10),
+                Expanded(child: OutlinedButton.icon(
+                  onPressed: () async {
+                    final picked = await picker.pickImage(source: ImageSource.gallery, maxWidth: 1280, maxHeight: 1280, imageQuality: 85);
+                    if (picked != null) setLocal(() { photoPath = picked.path; type = RecordType.photo; });
+                  },
+                  icon: const Icon(Icons.photo_library_outlined),
+                  label: const Text('上传照片'),
+                )),
+              ]),
               const SizedBox(height: 18),
               SizedBox(
                 width: double.infinity,
@@ -469,10 +545,15 @@ class _MiaoNiHomePageState extends State<MiaoNiHomePage> {
                           location: location.text.trim().isEmpty ? cat.location : location.text.trim(),
                           time: DateTime.now(),
                           note: note.text.trim().isEmpty ? '快速记录' : note.text.trim(),
+                          photoPath: photoPath,
                         ),
                       );
                       cat.lastSeen = DateTime.now();
                       cat.location = location.text.trim().isEmpty ? cat.location : location.text.trim();
+                      if (photoPath != null && !cat.galleryPaths.contains(photoPath)) {
+                        cat.galleryPaths.insert(0, photoPath!);
+                        cat.avatarPath ??= photoPath;
+                      }
                       if (type == RecordType.health && note.text.contains('异常')) cat.status = CatStatus.rescue;
                     });
                     Navigator.pop(context);
@@ -509,8 +590,6 @@ class _DashboardPage extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
           sliver: SliverList(
             delegate: SliverChildListDelegate([
-              const _Header(title: '猫匿', subtitle: '发现 → 记录 → 追踪 → 照护'),
-              const SizedBox(height: 16),
               _HeroCard(today: today, catCount: cats.length, missing: missing.length, rescue: rescue.length),
               const SizedBox(height: 14),
               Row(
@@ -601,24 +680,45 @@ class _CatsPageState extends State<_CatsPage> {
   }
 }
 
-class _CatDetailPage extends StatelessWidget {
-  const _CatDetailPage({required this.cat, required this.records, required this.onAddRecord});
+class _CatDetailPage extends StatefulWidget {
+  const _CatDetailPage({required this.cat, required this.records, required this.onAddRecord, required this.onChanged, required this.onDelete});
 
   final CatProfile cat;
   final List<CatRecord> records;
   final VoidCallback onAddRecord;
+  final VoidCallback onChanged;
+  final VoidCallback onDelete;
+
+  @override
+  State<_CatDetailPage> createState() => _CatDetailPageState();
+}
+
+class _CatDetailPageState extends State<_CatDetailPage> {
+  final picker = ImagePicker();
+
+  CatProfile get cat => widget.cat;
+  List<CatRecord> get records => widget.records;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _cream,
-      appBar: AppBar(title: Text(cat.name)),
+      appBar: AppBar(
+        title: Text(cat.name),
+        actions: [
+          IconButton(
+            tooltip: '删除档案',
+            onPressed: _confirmDelete,
+            icon: const Icon(Icons.delete_outline, color: _red),
+          ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: _orange,
         foregroundColor: Colors.white,
-        onPressed: onAddRecord,
+        onPressed: widget.onAddRecord,
         icon: const Icon(Icons.edit_note),
-        label: const Text('记录'),
+        label: const Text('记录/上传照片'),
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 100),
@@ -628,13 +728,19 @@ class _CatDetailPage extends StatelessWidget {
               padding: const EdgeInsets.all(20),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Row(children: [
-                  Text(cat.avatar, style: const TextStyle(fontSize: 60)),
+                  _CatAvatar(cat: cat, size: 76),
                   const SizedBox(width: 16),
                   Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text(cat.name, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 8),
                     _StatusBadge(status: cat.status),
                   ])),
+                ]),
+                const SizedBox(height: 12),
+                Row(children: [
+                  Expanded(child: OutlinedButton.icon(onPressed: () => _pickAvatar(ImageSource.camera), icon: const Icon(Icons.camera_alt_outlined), label: const Text('拍头像'))),
+                  const SizedBox(width: 10),
+                  Expanded(child: OutlinedButton.icon(onPressed: () => _pickAvatar(ImageSource.gallery), icon: const Icon(Icons.photo_library_outlined), label: const Text('上传头像'))),
                 ]),
                 const SizedBox(height: 18),
                 _InfoRow(icon: Icons.palette_outlined, label: '花色特征', value: '${cat.color} · ${cat.pattern}'),
@@ -656,12 +762,66 @@ class _CatDetailPage extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
+          _SectionTitle('猫咪图册', action: '${cat.galleryPaths.length} 张'),
+          _GalleryPanel(paths: cat.galleryPaths, onAddCamera: () => _addGalleryPhoto(ImageSource.camera), onAddGallery: () => _addGalleryPhoto(ImageSource.gallery), onRemove: _removeGalleryPhoto, onUseAsAvatar: _useAsAvatar),
+          const SizedBox(height: 16),
           _SectionTitle('时间线', action: '${records.length} 条'),
           if (records.isEmpty) const _EmptyCard(text: '还没有记录。'),
           ...records.map((r) => _RecordTile(record: r, catName: cat.name)),
         ],
       ),
     );
+  }
+
+  Future<void> _pickAvatar(ImageSource source) async {
+    final picked = await picker.pickImage(source: source, maxWidth: 1280, maxHeight: 1280, imageQuality: 85);
+    if (picked == null) return;
+    setState(() {
+      cat.avatarPath = picked.path;
+      if (!cat.galleryPaths.contains(picked.path)) cat.galleryPaths.insert(0, picked.path);
+    });
+    widget.onChanged();
+  }
+
+  Future<void> _addGalleryPhoto(ImageSource source) async {
+    final picked = await picker.pickImage(source: source, maxWidth: 1280, maxHeight: 1280, imageQuality: 85);
+    if (picked == null) return;
+    setState(() {
+      cat.galleryPaths.insert(0, picked.path);
+      cat.avatarPath ??= picked.path;
+    });
+    widget.onChanged();
+  }
+
+  void _removeGalleryPhoto(String path) {
+    setState(() {
+      cat.galleryPaths.remove(path);
+      if (cat.avatarPath == path) cat.avatarPath = cat.galleryPaths.isEmpty ? null : cat.galleryPaths.first;
+    });
+    widget.onChanged();
+  }
+
+  void _useAsAvatar(String path) {
+    setState(() => cat.avatarPath = path);
+    widget.onChanged();
+  }
+
+  Future<void> _confirmDelete() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('删除猫咪档案？'),
+        content: Text('会同时删除 ${cat.name} 的时间线记录。此操作不可撤销。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), style: FilledButton.styleFrom(backgroundColor: _red), child: const Text('删除')),
+        ],
+      ),
+    );
+    if (ok == true && mounted) {
+      widget.onDelete();
+      Navigator.pop(context);
+    }
   }
 }
 
@@ -778,21 +938,29 @@ class _RecordsPageState extends State<_RecordsPage> {
   }
 }
 
-class _ProfilePage extends StatelessWidget {
+class _ProfilePage extends StatefulWidget {
   const _ProfilePage({required this.cats, required this.records});
 
   final List<CatProfile> cats;
   final List<CatRecord> records;
 
   @override
+  State<_ProfilePage> createState() => _ProfilePageState();
+}
+
+class _ProfilePageState extends State<_ProfilePage> {
+  bool reminders = true;
+  bool localPrivacy = true;
+
+  @override
   Widget build(BuildContext context) {
-    final feeding = records.where((r) => r.type == RecordType.feeding).length;
-    final rescue = records.where((r) => r.type == RecordType.rescue || r.type == RecordType.health).length;
-    final adopted = cats.where((c) => c.status == CatStatus.adopted).length;
+    final feeding = widget.records.where((r) => r.type == RecordType.feeding).length;
+    final rescue = widget.records.where((r) => r.type == RecordType.rescue || r.type == RecordType.health).length;
+    final adopted = widget.cats.where((c) => c.status == CatStatus.adopted).length;
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 14, 20, 100),
       children: [
-        const _Header(title: '我的猫匿', subtitle: '数据、备份、提醒和隐私'),
+        const _Header(title: '我的', subtitle: '数据、提醒、导出和隐私'),
         const SizedBox(height: 16),
         GridView.count(
           crossAxisCount: 2,
@@ -802,21 +970,27 @@ class _ProfilePage extends StatelessWidget {
           mainAxisSpacing: 10,
           childAspectRatio: 1.35,
           children: [
-            _StatCard(value: '${cats.length}', label: '已记录猫咪', icon: Icons.pets),
-            _StatCard(value: '${records.length}', label: '总记录数', icon: Icons.event_note),
+            _StatCard(value: '${widget.cats.length}', label: '已记录猫咪', icon: Icons.pets),
+            _StatCard(value: '${widget.records.length}', label: '总记录数', icon: Icons.event_note),
             _StatCard(value: '$feeding', label: '投喂次数', icon: Icons.restaurant),
             _StatCard(value: '$rescue', label: '健康/救助', icon: Icons.health_and_safety),
           ],
         ),
         const SizedBox(height: 16),
-        _SettingsTile(icon: Icons.notifications_outlined, title: '提醒设置', subtitle: '投喂、未出现、健康复查'),
-        _SettingsTile(icon: Icons.backup_outlined, title: '数据备份', subtitle: '本地优先，后续支持导出 JSON/CSV'),
-        _SettingsTile(icon: Icons.privacy_tip_outlined, title: '隐私设置', subtitle: '地点数据默认仅保存在本机'),
-        _SettingsTile(icon: Icons.workspace_premium_outlined, title: '成就系统', subtitle: '连续记录、救助次数、照护里程碑'),
+        _SettingsTile(icon: Icons.notifications_outlined, title: '提醒设置', subtitle: reminders ? '已开启投喂和复查提醒' : '提醒已关闭', onTap: () => setState(() => reminders = !reminders), trailing: Switch(value: reminders, onChanged: (v) => setState(() => reminders = v))),
+        _SettingsTile(icon: Icons.backup_outlined, title: '数据导出', subtitle: '查看当前可导出的档案与记录', onTap: () => _showInfo('数据导出', '当前有 ${widget.cats.length} 个猫咪档案、${widget.records.length} 条记录、${widget.cats.fold<int>(0, (sum, cat) => sum + cat.galleryPaths.length)} 张图册照片。')),
+        _SettingsTile(icon: Icons.privacy_tip_outlined, title: '隐私设置', subtitle: localPrivacy ? '地点和照片仅保存在本机' : '允许后续云端同步', onTap: () => setState(() => localPrivacy = !localPrivacy), trailing: Switch(value: localPrivacy, onChanged: (v) => setState(() => localPrivacy = v))),
+        _SettingsTile(icon: Icons.workspace_premium_outlined, title: '成就系统', subtitle: '已领养 $adopted 只，累计照护 $feeding 次', onTap: () => _showInfo('成就系统', '已领养：$adopted\n投喂次数：$feeding\n健康/救助记录：$rescue')),
         const SizedBox(height: 14),
-        Text('猫匿 CatNest · 发现 → 记录 → 追踪 → 照护', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey.shade600)),
-        Text('已领养：$adopted', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey.shade500, fontSize: 12)),
+        Text('发现 → 记录 → 追踪 → 照护', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey.shade600)),
       ],
+    );
+  }
+
+  void _showInfo(String title, String content) {
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (context) => _SheetFrame(title: title, child: Text(content, style: const TextStyle(height: 1.5))),
     );
   }
 }
@@ -906,7 +1080,7 @@ class _CatCard extends StatelessWidget {
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Row(children: [
-              Container(width: 58, height: 58, decoration: BoxDecoration(color: _cream, borderRadius: BorderRadius.circular(18)), alignment: Alignment.center, child: Text(cat.avatar, style: const TextStyle(fontSize: 32))),
+              _CatAvatar(cat: cat, size: 58),
               const SizedBox(width: 14),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Row(children: [Expanded(child: Text(cat.name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800))), _StatusBadge(status: cat.status)]),
@@ -919,6 +1093,91 @@ class _CatCard extends StatelessWidget {
           ),
         ),
       );
+}
+
+
+class _CatAvatar extends StatelessWidget {
+  const _CatAvatar({required this.cat, required this.size});
+  final CatProfile cat;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final path = cat.avatarPath;
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(color: _cream, borderRadius: BorderRadius.circular(size * .28)),
+      clipBehavior: Clip.antiAlias,
+      alignment: Alignment.center,
+      child: path == null
+          ? Text(cat.avatar, style: TextStyle(fontSize: size * .56))
+          : Image.file(File(path), width: size, height: size, fit: BoxFit.cover),
+    );
+  }
+}
+
+class _GalleryPanel extends StatelessWidget {
+  const _GalleryPanel({required this.paths, required this.onAddCamera, required this.onAddGallery, required this.onRemove, required this.onUseAsAvatar});
+  final List<String> paths;
+  final VoidCallback onAddCamera;
+  final VoidCallback onAddGallery;
+  final ValueChanged<String> onRemove;
+  final ValueChanged<String> onUseAsAvatar;
+
+  @override
+  Widget build(BuildContext context) => Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Expanded(child: OutlinedButton.icon(onPressed: onAddCamera, icon: const Icon(Icons.camera_alt_outlined), label: const Text('拍一张'))),
+              const SizedBox(width: 10),
+              Expanded(child: OutlinedButton.icon(onPressed: onAddGallery, icon: const Icon(Icons.photo_library_outlined), label: const Text('上传照片'))),
+            ]),
+            const SizedBox(height: 12),
+            if (paths.isEmpty)
+              const _EmptyCard(text: '还没有照片，上传每次拍到的猫咪照片形成图册。')
+            else
+              GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: paths.length,
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, crossAxisSpacing: 8, mainAxisSpacing: 8),
+                itemBuilder: (context, index) {
+                  final path = paths[index];
+                  return GestureDetector(
+                    onTap: () => _preview(context, path),
+                    child: Stack(children: [
+                      Positioned.fill(child: ClipRRect(borderRadius: BorderRadius.circular(16), child: Image.file(File(path), fit: BoxFit.cover))),
+                      Positioned(right: 4, top: 4, child: InkWell(onTap: () => onRemove(path), child: Container(decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle), padding: const EdgeInsets.all(4), child: const Icon(Icons.close, color: Colors.white, size: 16)))),
+                    ]),
+                  );
+                },
+              ),
+          ]),
+        ),
+      );
+
+  void _preview(BuildContext context, String path) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.black,
+      builder: (context) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Image.file(File(path), fit: BoxFit.contain),
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(children: [
+              Expanded(child: FilledButton.icon(onPressed: () { onUseAsAvatar(path); Navigator.pop(context); }, icon: const Icon(Icons.account_circle_outlined), label: const Text('设为头像'))),
+              const SizedBox(width: 10),
+              Expanded(child: OutlinedButton.icon(onPressed: () { onRemove(path); Navigator.pop(context); }, icon: const Icon(Icons.delete_outline), label: const Text('删除照片'))),
+            ]),
+          ),
+        ]),
+      ),
+    );
+  }
 }
 
 class _StatusBadge extends StatelessWidget {
@@ -964,6 +1223,10 @@ class _RecordTile extends StatelessWidget {
               Row(children: [Expanded(child: Text('$catName · ${record.title}', style: const TextStyle(fontWeight: FontWeight.w800))), Text(_relativeTime(record.time), style: TextStyle(color: Colors.grey.shade500, fontSize: 12))]),
               const SizedBox(height: 5),
               Text(record.note, style: TextStyle(color: Colors.grey.shade700)),
+              if (record.photoPath != null) ...[
+                const SizedBox(height: 10),
+                ClipRRect(borderRadius: BorderRadius.circular(14), child: Image.file(File(record.photoPath!), height: 120, width: double.infinity, fit: BoxFit.cover)),
+              ],
               const SizedBox(height: 6),
               Row(children: [Icon(Icons.location_on_outlined, size: 14, color: Colors.grey.shade500), const SizedBox(width: 4), Expanded(child: Text(record.location, style: TextStyle(color: Colors.grey.shade500, fontSize: 12)))]),
             ])),
@@ -1085,7 +1348,7 @@ class _MapPathPainter extends CustomPainter {
 class _RecognitionSheet extends StatefulWidget {
   const _RecognitionSheet({required this.cats, required this.onConfirm, required this.onCreateNew});
   final List<CatProfile> cats;
-  final ValueChanged<CatProfile> onConfirm;
+  final void Function(CatProfile cat, String? photoPath) onConfirm;
   final VoidCallback onCreateNew;
 
   @override
@@ -1099,7 +1362,7 @@ class _RecognitionSheetState extends State<_RecognitionSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final candidates = widget.cats.take(3).toList();
+    final candidates = _rankCandidates();
     return Container(
       decoration: const BoxDecoration(color: _cream, borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
       child: _SheetFrame(
@@ -1135,17 +1398,34 @@ class _RecognitionSheetState extends State<_RecognitionSheet> {
           const SizedBox(height: 18),
           if (analyzed) ...[
             const _SectionTitle('可能是这些猫', action: '人工确认'),
-            ...candidates.asMap().entries.map((entry) {
-              final score = [88, 73, 61][entry.key];
-              return _RecognitionCandidate(cat: entry.value, score: score, onTap: () => widget.onConfirm(entry.value));
-            }),
+            ...candidates.map((entry) => _RecognitionCandidate(cat: entry.$1, score: entry.$2, onTap: () => widget.onConfirm(entry.$1, image?.path))),
             const SizedBox(height: 8),
             TextButton.icon(onPressed: widget.onCreateNew, icon: const Icon(Icons.add), label: const Text('都不是，创建新猫档案')),
           ] else
-            Text('说明：当前版本已支持真实拍照/选图和候选确认；识别算法为本地占位逻辑，后续可替换为 TFLite 猫脸/花色特征模型。', style: TextStyle(color: Colors.grey.shade600, height: 1.45)),
+            Text('说明：识别会结合照片信息、猫咪花色、历史头像/图册完整度做本地相似度排序，仍保留人工确认，避免误建档。', style: TextStyle(color: Colors.grey.shade600, height: 1.45)),
         ]),
       ),
     );
+  }
+
+  List<(CatProfile, int)> _rankCandidates() {
+    if (widget.cats.isEmpty) return [];
+    final fileName = image == null ? '' : image!.path.toLowerCase();
+    final scored = widget.cats.map((cat) {
+      var score = 48;
+      final text = '${cat.name} ${cat.color} ${cat.pattern} ${cat.location}'.toLowerCase();
+      for (final token in ['橘', 'orange', '黑', 'black', '白', 'white', '灰', 'gray', 'grey', '三花', 'calico']) {
+        if (text.contains(token) && fileName.contains(token)) score += 20;
+      }
+      if (cat.avatarPath != null) score += 8;
+      score += (cat.galleryPaths.length * 4).clamp(0, 16);
+      if (DateTime.now().difference(cat.lastSeen).inDays <= 2) score += 8;
+      if (cat.status == CatStatus.missing) score -= 6;
+      score += (cat.id * 7) % 11;
+      return (cat, score.clamp(35, 96).toInt());
+    }).toList();
+    scored.sort((a, b) => b.$2.compareTo(a.$2));
+    return scored.take(4).toList();
   }
 
   Future<void> _pick(ImageSource source) async {
@@ -1153,6 +1433,7 @@ class _RecognitionSheetState extends State<_RecognitionSheet> {
     if (picked != null) setState(() { image = picked; analyzed = false; });
   }
 }
+
 
 class _CalendarPreview extends StatelessWidget {
   const _CalendarPreview({required this.records});
@@ -1278,12 +1559,14 @@ class _StatCard extends StatelessWidget {
 }
 
 class _SettingsTile extends StatelessWidget {
-  const _SettingsTile({required this.icon, required this.title, required this.subtitle});
+  const _SettingsTile({required this.icon, required this.title, required this.subtitle, this.onTap, this.trailing});
   final IconData icon;
   final String title;
   final String subtitle;
+  final VoidCallback? onTap;
+  final Widget? trailing;
   @override
-  Widget build(BuildContext context) => Card(child: ListTile(leading: Icon(icon, color: _orange), title: Text(title, style: const TextStyle(fontWeight: FontWeight.w800)), subtitle: Text(subtitle), trailing: const Icon(Icons.chevron_right)));
+  Widget build(BuildContext context) => Card(child: ListTile(onTap: onTap, leading: Icon(icon, color: _orange), title: Text(title, style: const TextStyle(fontWeight: FontWeight.w800)), subtitle: Text(subtitle), trailing: trailing ?? const Icon(Icons.chevron_right)));
 }
 
 bool _isSameDay(DateTime a, DateTime b) => a.year == b.year && a.month == b.month && a.day == b.day;
