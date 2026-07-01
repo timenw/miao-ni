@@ -29,6 +29,10 @@ jobs:
           cp -r lib /tmp/miao_ni_lib
           cp pubspec.yaml /tmp/miao_ni_pubspec.yaml
 
+      - name: Remove stale platform skeletons
+        run: |
+          rm -rf android ios linux macos windows web test analysis_options.yaml
+
       - name: Generate complete Flutter project skeleton
         run: flutter create --org com.timenw --project-name miao_ni .
 
